@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// TODO: Service kodlarını yazıp kütüphaneyi yayına al - güncelle
-
 type Service struct {
 	store     UserStore
 	jwtSecret string
