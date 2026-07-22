@@ -14,7 +14,7 @@ type Claims struct {
 }
 
 func GenerateToken(userID, role, secretKey string, duration time.Duration) (string, error) {
-	Claims := Claims{
+	claims := Claims{
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -23,7 +23,7 @@ func GenerateToken(userID, role, secretKey string, duration time.Duration) (stri
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {
