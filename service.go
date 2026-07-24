@@ -3,26 +3,50 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-type Service struct {
-	store     UserStore
-	jwtSecret string
+type TokenType struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
-func NewService(store UserStore, jwtSecret string) *Service {
+type Service struct {
+	store      UserStore
+	redisStore *RedisStore
+	jwtSecret  string
+}
+
+func NewService(store UserStore, redisStore *RedisStore, jwtSecret string) *Service {
 	return &Service{
-		store:     store,
-		jwtSecret: jwtSecret,
+		store:      store,
+		redisStore: redisStore,
+		jwtSecret:  jwtSecret,
 	}
 }
 
 func (s *Service) Register(ctx context.Context, id, email, password, role string) (*AuthUser, error) {
+	email = strings.TrimSpace(email)
+
+	if email == "" || !strings.Contains(email, "@") {
+		return nil, errors.New("Geçersiz e-posta formatı")
+	}
+
+	if len(password) < 8 {
+		return nil, errors.New("Şifre en az 8 karakter olmalıdır.")
+	}
+
 	hashedPassword, err := HashPassword(password)
 
 	if err != nil {
 		return nil, err
+	}
+
+	if id == "" {
+		id = uuid.NewString()
 	}
 
 	user := &AuthUser{
@@ -39,18 +63,109 @@ func (s *Service) Register(ctx context.Context, id, email, password, role string
 	return user, nil
 }
 
-func (s *Service) Login(ctx context.Context, email, password string) (string, error) {
+func (s *Service) Login(ctx context.Context, email, password string) (*TokenType, error) {
+	return s.LoginWithDevice(ctx, email, password, "Unknown Device", "0.0.0.0", "Unknown")
+}
+
+func (s *Service) LoginWithDevice(ctx context.Context, email, password, device, ip, userAgent string) (*TokenType, error) {
 	user, err := s.store.FindByEmail(ctx, email)
 
 	if err != nil {
-		return "", ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
 	if !CheckPassword(password, user.PasswordHash) {
-		return "", errors.New("Geçersiz şifre")
+		return nil, errors.New("Geçersiz şifre")
 	}
 
-	return GenerateToken(user.ID, user.Role, s.jwtSecret, time.Hour*24)
+	accessToken, err := GenerateToken(user.ID, user.Role, s.jwtSecret, time.Minute*15)
+
+	if err != nil {
+		return nil, err
+	}
+
+	refreshTokenStr, err := GenerateRandomToken()
+
+	if err != nil {
+		return nil, err
+	}
+
+	refreshHash := HashToken(refreshTokenStr)
+	session := &SessionMetadata{
+		ID:               refreshHash[:16],
+		UserID:           user.ID,
+		RefreshTokenHash: refreshHash,
+		Device:           device,
+		IPAddress:        ip,
+		UserAgent:        userAgent,
+		ExpiresAt:        time.Now().Add(time.Hour * 24 * 30),
+		CreatedAt:        time.Now(),
+	}
+
+	if err := s.redisStore.SaveSession(ctx, session); err != nil {
+		return nil, err
+	}
+
+	return &TokenType{
+		AccessToken:  accessToken,
+		RefreshToken: refreshTokenStr,
+	}, nil
+}
+
+func (s *Service) RefreshTokenWithRotation(ctx context.Context, oldRefreshTokenStr string) (*TokenType, error) {
+	oldHash := HashToken(oldRefreshTokenStr)
+	session, err := s.redisStore.GetSessionByTokenHash(ctx, oldHash)
+
+	if err != nil {
+		return nil, errors.New("geçersiz veya süresi dolmuş oturum")
+	}
+
+	_ = s.redisStore.RevokeSession(ctx, session.UserID, oldHash)
+	user, err := s.store.FindByID(ctx, session.UserID)
+
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	newAccessToken, err := GenerateToken(user.ID, user.Role, s.jwtSecret, time.Minute*15)
+	if err != nil {
+		return nil, err
+	}
+
+	newRefreshTokenStr, err := GenerateRandomToken()
+	if err != nil {
+		return nil, err
+	}
+
+	newHash := HashToken(newRefreshTokenStr)
+	newSession := &SessionMetadata{
+		ID:               newHash[:16],
+		UserID:           user.ID,
+		RefreshTokenHash: newHash,
+		Device:           session.Device,
+		IPAddress:        session.IPAddress,
+		UserAgent:        session.UserAgent,
+		ExpiresAt:        time.Now().Add(time.Hour * 24 * 30),
+		CreatedAt:        time.Now(),
+	}
+
+	if err := s.redisStore.SaveSession(ctx, newSession); err != nil {
+		return nil, err
+	}
+
+	return &TokenType{
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshTokenStr,
+	}, nil
+}
+
+func (s *Service) Logout(ctx context.Context, userID, refreshTokenStr string) error {
+	hash := HashToken(refreshTokenStr)
+	return s.redisStore.RevokeSession(ctx, userID, hash)
+}
+
+func (s *Service) LogoutAll(ctx context.Context, userID string) error {
+	return s.redisStore.RevokeAllUserSessions(ctx, userID)
 }
 
 func (s *Service) ForgotPassword(ctx context.Context, email string) (string, error) {

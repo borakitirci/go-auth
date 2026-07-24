@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -44,7 +45,15 @@ func (s *SQLStore) Create(ctx context.Context, user *AuthUser) error {
 
 	now := time.Now()
 	_, err := s.db.ExecContext(ctx, query, user.ID, user.Email, user.PasswordHash, user.Role, now, now)
-	return err
+
+	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "duplicate entry") || strings.Contains(errStr, "UNIQUE constraint failed") {
+			return ErrUserAlreadyExists
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *SQLStore) FindByEmail(ctx context.Context, email string) (*AuthUser, error) {

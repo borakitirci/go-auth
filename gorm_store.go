@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -13,19 +14,25 @@ type GORMStore struct {
 }
 
 func NewGORMStore(db *gorm.DB) *GORMStore {
-	db.AutoMigrate(&AuthUser{})
 	return &GORMStore{db: db}
 }
 
-func (s *GORMStore) Create(ctx context.Context, user *AuthUser) error {
-	var count int64
-	s.db.WithContext(ctx).Model(&AuthUser{}).Where("email = ?", user.Email).Count(&count)
+func (s *GORMStore) Migrate() error {
+	return s.db.AutoMigrate(&AuthUser{})
+}
 
-	if count > 0 {
-		return ErrUserAlreadyExists
+func (s *GORMStore) Create(ctx context.Context, user *AuthUser) error {
+	err := s.db.WithContext(ctx).Create(user).Error
+
+	if err != nil {
+		errStr := err.Error()
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "duplicate entry") || strings.Contains(errStr, "UNIQUE constraint failed") {
+			return ErrUserAlreadyExists
+		}
+		return err
 	}
 
-	return s.db.WithContext(ctx).Create(user).Error
+	return nil
 }
 
 func (s *GORMStore) FindByEmail(ctx context.Context, email string) (*AuthUser, error) {
