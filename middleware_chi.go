@@ -13,7 +13,7 @@ const (
 	ChiRoleKey   ctxKey = "auth_user_role"
 )
 
-func ChiAuth(jwtSecret string) func(http.Handler) http.Handler {
+func ChiAuthBearer(jwtSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -31,6 +31,29 @@ func ChiAuth(jwtSecret string) func(http.Handler) http.Handler {
 			claims, err := ValidateToken(parts[1], jwtSecret)
 			if err != nil {
 				http.Error(w, `{"error":"Geçersiz veya süresi dolmuş token"}`, http.StatusUnauthorized)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), ChiUserIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, ChiRoleKey, claims.Role)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func ChiAuthCookie(jwtSecret string, loginURL string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cookie, err := r.Cookie("access_token")
+			if err != nil {
+				http.Redirect(w, r, loginURL, http.StatusSeeOther)
+				return
+			}
+
+			claims, err := ValidateToken(cookie.Value, jwtSecret)
+			if err != nil {
+				http.Redirect(w, r, loginURL, http.StatusSeeOther)
 				return
 			}
 

@@ -12,7 +12,7 @@ const (
 	GinCtxRoleKey   = "auth_user_role"
 )
 
-func GinAuth(jwtSecret string) gin.HandlerFunc {
+func GinAuthBearer(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -29,6 +29,29 @@ func GinAuth(jwtSecret string) gin.HandlerFunc {
 		claims, err := ValidateToken(parts[1], jwtSecret)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Geçersiz veya süresi dolmuş token"})
+			return
+		}
+
+		c.Set(GinCtxUserIDKey, claims.UserID)
+		c.Set(GinCtxRoleKey, claims.Role)
+
+		c.Next()
+	}
+}
+
+func GinAuthCookie(jwtSecret string, loginURL string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenStr, err := c.Cookie("access_token")
+		if err != nil {
+			c.Redirect(http.StatusSeeOther, loginURL)
+			c.Abort()
+			return
+		}
+
+		claims, err := ValidateToken(tokenStr, jwtSecret)
+		if err != nil {
+			c.Redirect(http.StatusSeeOther, loginURL)
+			c.Abort()
 			return
 		}
 

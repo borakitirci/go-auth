@@ -15,16 +15,16 @@ type TokenType struct {
 }
 
 type Service struct {
-	store      UserStore
-	redisStore *RedisStore
-	jwtSecret  string
+	store        UserStore
+	sessionStore SessionStore
+	jwtSecret    string
 }
 
-func NewService(store UserStore, redisStore *RedisStore, jwtSecret string) *Service {
+func NewService(store UserStore, sessionStore SessionStore, jwtSecret string) *Service {
 	return &Service{
-		store:      store,
-		redisStore: redisStore,
-		jwtSecret:  jwtSecret,
+		store:        store,
+		sessionStore: sessionStore,
+		jwtSecret:    jwtSecret,
 	}
 }
 
@@ -102,7 +102,7 @@ func (s *Service) LoginWithDevice(ctx context.Context, email, password, device, 
 		CreatedAt:        time.Now(),
 	}
 
-	if err := s.redisStore.SaveSession(ctx, session); err != nil {
+	if err := s.sessionStore.SaveSession(ctx, session); err != nil {
 		return nil, err
 	}
 
@@ -114,13 +114,13 @@ func (s *Service) LoginWithDevice(ctx context.Context, email, password, device, 
 
 func (s *Service) RefreshTokenWithRotation(ctx context.Context, oldRefreshTokenStr string) (*TokenType, error) {
 	oldHash := HashToken(oldRefreshTokenStr)
-	session, err := s.redisStore.GetSessionByTokenHash(ctx, oldHash)
+	session, err := s.sessionStore.GetSessionByTokenHash(ctx, oldHash)
 
 	if err != nil {
 		return nil, errors.New("geçersiz veya süresi dolmuş oturum")
 	}
 
-	_ = s.redisStore.RevokeSession(ctx, session.UserID, oldHash)
+	_ = s.sessionStore.RevokeSession(ctx, session.UserID, oldHash)
 	user, err := s.store.FindByID(ctx, session.UserID)
 
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *Service) RefreshTokenWithRotation(ctx context.Context, oldRefreshTokenS
 		CreatedAt:        time.Now(),
 	}
 
-	if err := s.redisStore.SaveSession(ctx, newSession); err != nil {
+	if err := s.sessionStore.SaveSession(ctx, newSession); err != nil {
 		return nil, err
 	}
 
@@ -161,11 +161,11 @@ func (s *Service) RefreshTokenWithRotation(ctx context.Context, oldRefreshTokenS
 
 func (s *Service) Logout(ctx context.Context, userID, refreshTokenStr string) error {
 	hash := HashToken(refreshTokenStr)
-	return s.redisStore.RevokeSession(ctx, userID, hash)
+	return s.sessionStore.RevokeSession(ctx, userID, hash)
 }
 
 func (s *Service) LogoutAll(ctx context.Context, userID string) error {
-	return s.redisStore.RevokeAllUserSessions(ctx, userID)
+	return s.sessionStore.RevokeAllUserSessions(ctx, userID)
 }
 
 func (s *Service) ForgotPassword(ctx context.Context, email string) (string, error) {

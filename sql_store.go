@@ -29,6 +29,57 @@ func NewSQLStore(db *sql.DB, driverType DriverType) *SQLStore {
 	}
 }
 
+func (s *SQLStore) AutoMigrate(ctx context.Context) error {
+	var query string
+
+	switch s.driverType {
+	case DriverPostgres:
+		query = `
+		CREATE TABLE IF NOT EXISTS auth_users (
+			id VARCHAR(36) PRIMARY KEY,
+			email VARCHAR(255) UNIQUE NOT NULL,
+			password_hash VARCHAR(255) NOT NULL,
+			role VARCHAR(50) NOT NULL DEFAULT 'user',
+			reset_token_hash VARCHAR(255),
+			reset_token_expire_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		);`
+
+	case DriverMySQL:
+		query = `
+		CREATE TABLE IF NOT EXISTS auth_users (
+			id VARCHAR(36) PRIMARY KEY,
+			email VARCHAR(255) UNIQUE NOT NULL,
+			password_hash VARCHAR(255) NOT NULL,
+			role VARCHAR(50) NOT NULL DEFAULT 'user',
+			reset_token_hash VARCHAR(255),
+			reset_token_expire_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
+
+	case DriverSQLite:
+		query = `
+		CREATE TABLE IF NOT EXISTS auth_users (
+			id TEXT PRIMARY KEY,
+			email TEXT UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'user',
+			reset_token_hash TEXT,
+			reset_token_expire_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		);`
+
+	default:
+		return fmt.Errorf("desteklenmeyen veritabanı sürücüsü: %s", s.driverType)
+	}
+
+	_, err := s.db.ExecContext(ctx, query)
+	return err
+}
+
 func (s *SQLStore) P(index int) string {
 	if s.driverType == DriverPostgres {
 		return "$" + strconv.Itoa(index)
