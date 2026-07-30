@@ -213,3 +213,11 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 
 	return s.store.UpdatePassword(ctx, user.ID, newHashedPassword)
 }
+
+func (s *Service) GetUserSessions(ctx context.Context, userID string) ([]*SessionMetadata, error) {
+	return s.sessionStore.GetUserSessions(ctx, userID)
+}
+
+func (s *Service) RevokeSessionByID(ctx context.Context, userID, sessionID string) error {
+	return s.sessionStore.RevokeSessionByID(ctx, userID, sessionID)
+}

@@ -106,3 +106,72 @@ func (s *SQLSessionStore) RevokeAllUserSessions(ctx context.Context, userID stri
 	_, err := s.db.ExecContext(ctx, query, userID)
 	return err
 }
+
+func (s *SQLSessionStore) GetUserSessions(ctx context.Context, userID string) ([]*SessionMetadata, error) {
+	query := fmt.Sprintf(`
+		SELECT id, user_id, refresh_token_hash, device, ip_address, user_agent, expires_at, created_at
+		FROM auth_sessions WHERE user_id = %s ORDER BY created_at DESC`,
+		s.P(1),
+	)
+
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*SessionMetadata
+	for rows.Next() {
+		var sess SessionMetadata
+		err := rows.Scan(
+			&sess.ID,
+			&sess.UserID,
+			&sess.RefreshTokenHash,
+			&sess.Device,
+			&sess.IPAddress,
+			&sess.UserAgent,
+			&sess.ExpiresAt,
+			&sess.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, &sess)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+}
+
+func (s *SQLSessionStore) GetSessionByID(ctx context.Context, sessionID string) (*SessionMetadata, error) {
+	query := fmt.Sprintf(`
+		SELECT id, user_id, refresh_token_hash, device, ip_address, user_agent, expires_at, created_at
+		FROM auth_sessions WHERE id = %s`,
+		s.P(1),
+	)
+
+	var sess SessionMetadata
+	err := s.db.QueryRowContext(ctx, query, sessionID).Scan(
+		&sess.ID,
+		&sess.UserID,
+		&sess.RefreshTokenHash,
+		&sess.Device,
+		&sess.IPAddress,
+		&sess.UserAgent,
+		&sess.ExpiresAt,
+		&sess.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &sess, nil
+}
+
+func (s *SQLSessionStore) RevokeSessionByID(ctx context.Context, userID, sessionID string) error {
+	query := fmt.Sprintf(`DELETE FROM auth_sessions WHERE user_id = %s AND id = %s`, s.P(1), s.P(2))
+	_, err := s.db.ExecContext(ctx, query, userID, sessionID)
+	return err
+}
