@@ -39,6 +39,11 @@ func (s *Service) Register(ctx context.Context, id, email, password, role string
 		return nil, errors.New("Şifre en az 8 karakter olmalıdır.")
 	}
 
+	existingUser, _ := s.store.FindByEmail(ctx, email)
+	if existingUser != nil {
+		return nil, ErrUserAlreadyExists
+	}
+
 	hashedPassword, err := HashPassword(password)
 
 	if err != nil {
