@@ -33,17 +33,18 @@ func (s *SQLStore) AutoMigrate(ctx context.Context) error {
 	var query string
 
 	switch s.driverType {
+
 	case DriverPostgres:
 		query = `
 		CREATE TABLE IF NOT EXISTS auth_users (
-			id VARCHAR(36) PRIMARY KEY,
+			id UUID PRIMARY KEY,
 			email VARCHAR(255) UNIQUE NOT NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			role VARCHAR(50) NOT NULL DEFAULT 'user',
 			reset_token_hash VARCHAR(255),
-			reset_token_expire_at TIMESTAMP,
-			created_at TIMESTAMP NOT NULL,
-			updated_at TIMESTAMP NOT NULL
+			reset_token_expire_at TIMESTAMP WITH TIME ZONE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		);`
 
 	case DriverMySQL:
@@ -55,8 +56,8 @@ func (s *SQLStore) AutoMigrate(ctx context.Context) error {
 			role VARCHAR(50) NOT NULL DEFAULT 'user',
 			reset_token_hash VARCHAR(255),
 			reset_token_expire_at DATETIME,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
 
 	case DriverSQLite:
@@ -68,8 +69,8 @@ func (s *SQLStore) AutoMigrate(ctx context.Context) error {
 			role TEXT NOT NULL DEFAULT 'user',
 			reset_token_hash TEXT,
 			reset_token_expire_at DATETIME,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`
 
 	default:
