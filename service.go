@@ -125,6 +125,11 @@ func (s *Service) RefreshTokenWithRotation(ctx context.Context, oldRefreshTokenS
 		return nil, errors.New("geçersiz veya süresi dolmuş oturum")
 	}
 
+	if session.ExpiresAt.Before(time.Now()) {
+	    _ = s.sessionStore.RevokeSession(ctx, session.UserID, oldHash)
+	    return nil, errors.New("refresh token süresi dolmuş")
+	}
+
 	_ = s.sessionStore.RevokeSession(ctx, session.UserID, oldHash)
 	user, err := s.store.FindByID(ctx, session.UserID)
 
